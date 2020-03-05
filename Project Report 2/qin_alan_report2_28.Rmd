@@ -1,0 +1,100 @@
+---
+title: "Project 2 Checkpoint"
+author: "Alan Qin"
+date: "2/27/2020"
+output: 
+  html_document:
+    df_print: paged
+    toc: yes
+  pdf_document:
+    toc: yes
+  prettydoc::html_pretty:
+    theme: architect
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library("ggplot2")
+data = read.csv("/Users/alanqin/Downloads/fifa-20-complete-player-dataset/players_20.csv")
+data$release_clause_eur[is.na(data$release_clause_eur)]= 0
+```
+
+
+### Regression for different X's on wage
+
+```{r lm 1}
+fit_release = lm(data = data, wage_eur ~ release_clause_eur)
+summary(fit_release)$adj.r.squared
+```
+The variables I chose were players' release clause and their value in euros. These values make sense because there 
+
+```{r lm 2}
+fit_value = lm(data = data, wage_eur ~ value_eur)
+summary(fit_value)$adj.r.squared
+```
+
+```{r lm 3}
+fit_pass = lm(data = data, wage_eur ~ passing)
+summary(fit_pass)$adj.r.squared
+```
+The variables I chose were the players' passing and dribbling rating 
+```{r lm 4}
+fit_drib = lm(data = data, wage_eur ~ dribbling)
+summary(fit_drib)$adj.r.squared
+```
+The variables I chose were the players' pace and defending rating
+```{r lm 5}
+fit_overall = lm(data = data, wage_eur ~ overall)
+summary(fit_overall)$adj.r.squared
+```
+The variables I chose were the players' overall and potential rating 
+
+```{r lm 6}
+fit_potential = lm(data = data, wage_eur ~ potential)
+summary(fit_potential)$adj.r.squared
+```
+
+
+The variables for this regression were release clause in euros, value in euros, weak foot,
+skill moves, passing rating, dribbling rating, pace rating, defending rating, overall 
+rating, and potential rating.
+
+
+```{r lm best }
+fit_best = lm(wage_eur ~ release_clause_eur + value_eur + overall +
+                potential, data = data)
+summary(fit_best)$adj.r.squared
+```
+
+
+
+### Y vs Yhat
+
+```{r y vs yhat}
+pred = fit_best$fitted.values
+a = fit_release$fitted.values
+b = fit_value$fitted.values
+plot(pred,data$wage_eur)
+plot(pred)
+plot(data$wage_eur)
+```
+
+As you can see from the plot 
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
