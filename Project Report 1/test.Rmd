@@ -1,124 +1,202 @@
 ---
-title: "qin_alan_report1_28"
+title: "Effect of Fifa Player Ratings on Real Life Wages"
 author: "Alan Qin"
-date: "2/10/2020"
+date: "04/01/2020"
 output:
-  pdf_document: default
+  pdf_document:
+    toc: yes
+  prettydoc::html_pretty:
+    theme: architect
+    toc: yes
   html_document:
     df_print: paged
+    toc: yes
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, message = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-## Project Introduction
-
-
-My project is about players in the game FIFA 20 and how wages are affected by rating. This is
-interesting to me because I want to see how big the gap in wage between the highest rated players in
-the game. The source of the data is from Kaggle.com, specifically 
-(https://www.kaggle.com/stefanoleone992/fifa-20-complete-player-dataset). The Y (outcome) in this
-data are the wages of the players while the X’s are the ratings of the player. This includes overall
-rating, potential rating, shooting rating, and many of other ones.
-
-## Histogram and Box Plots for my X's and Y's
-
-```{r}
-
+```{r import data and stuff, include = FALSE}
+library('tree')
+library('tidyverse')
+library('glmnet')
 library("ggplot2")
+library('dplyr')
+library('ISLR')
+library(MASS)
 data = read.csv("/Users/alanqin/Downloads/fifa-20-complete-player-dataset/players_20.csv")
 ```
+\newpage
+
+# Project Introduction
+
+My project is about players in the game FIFA 20 and how wages are affected by rating. This is interesting to me 
+because I want to see how the best soccer players' wages are
+affected by their FIFA rating. The source of the data is from Kaggle.com, specifically 
+(https://www.kaggle.com/stefanoleone992/fifa-20-complete-player-dataset). The Y (outcome) 
+in this data are the wages of the players while the X’s are the ratings of the player.
+There are well over 50 X's in this dataset but I have chosen the 17 most important X's such as overall, potential, age, and others. In this project, I am using different techniques to find out if professional wages are affected by
+FIFA rating. 
+
+These variables are
+
+* **wage_eur**: log(wage) in EUR of the player
+* **value_eur**: value in EUR of the player
+* **release_clause_eur**: release clause in euros
+* **overall**: overall attribute of the player, based on all of the player stats
+* **potential**: potential attribute of the player, based on age and other factors
+* **age**: age of the player
+* **pace**: player pace rating, based on sprint speed and acceleration
+* **shooting**: player shooting rating, based on finishing, positioning, shot power, long shots, volley, and penalties
+* **passing**: player passing rating, based on vision, crossing, fk. accuracy, short and long passing, and curve
+* **dribbling**: player dribbling rating, based on agility, balance, reactions, ball control, dribbling, composure
+* **defending**: player defending rating, based on interceptions, heading accuracy, def. awareness, tackling
+* **physic**: player physical rating, based on jumping, stamina, strength, and agression
+* **height_cm**: height of a player in centimeters
+* **weight_kg**: weight of a player in kilograms
+* **international_reputation**: international repulation attribute
+* **weak_foot**: weak foot rating from 1-5 stars
+* **skill_moves**: skill move rating from 1-5 stars
+
+\newpage 
+
+# Fixing Data 
 ```{r}
-ggplot(data = data, aes(x = wage_eur)) + geom_histogram(binwidth = 10000) + 
-ggtitle('Histogram of Players Wages') + labs(x = 'Wage (Euros)', y = "Count")
+newData = as_tibble(data)
+data1 = newData %>% 
+  dplyr::select(wage_eur, age, height_cm, weight_kg, overall,
+         potential, value_eur, international_reputation,
+         weak_foot, skill_moves, release_clause_eur, pace,
+         shooting, passing, dribbling, defending, physic)
+#data1[1] = log(data1[1])
+dataOmit = na.omit(data1)
+fifa_data = dataOmit
 ```
 
-This histogram shows the wages of all the players in fifa. As you can see, there are over ten
-thousand players with wages of around 0. As we go up, there are less and less playesr with one player
-making around 500000 euros a week.
+\newpage
+
+# Report 1
+
+## Histogram for my X's and Y's
 
 
-```{r}
-ggplot(data = data, aes(x = as.factor(overall), y = wage_eur))+ geom_boxplot() + 
-  ggtitle('Box Plot of Overall Rating vs Wage') + 
-  labs(x = 'Overall Rating', y = "Wage (Euros)")
+```{r wages hist, message = FALSE}
+ggplot(data = fifa_data, aes(x = wage_eur)) + 
+  geom_histogram(bins = 1000, binwidth = 10000) + 
+  ggtitle('Histogram of Players Wages') + 
+  labs(x = 'Wage (Euros)', y = "Count")
+```
+
+This histogram shows the wages of all the players in fifa. As you can see, there are around 4000 
+players with wages of around 0. As we go up in wage, there are less and less players with one player 
+(Lionel Messi) making around log(13.4) which is about 500,000 euros a week.
+
+\newpage
+
+```{r age hist}
+ggplot(data = fifa_data, aes(x = age)) + 
+  geom_histogram(binwidth = 1, color = 'black', fill = 'gray') + 
+  ggtitle('Histogram of Players Ages') + 
+  labs(x = 'Age', y = "Count")
+```
+
+As we can see from this histogram, there are many players within the age range of 20-29
+while there are few players younger than 18 and older than 35. There are the most players
+within the age range of 20-29 because that is their physical peak. 
+
+\newpage
+
+```{r overall hist}
+ggplot(data = fifa_data, aes(x = overall)) + 
+  geom_histogram(binwidth = 2, color = 'black', fill = 'gray') + 
+  ggtitle('Histogram of Players Overall Rating') +
+  labs(x = 'Overall Rating', y = "Count")
 ```
 
 
-This box plot shows the ranges, averages, and quartiles of wage for each rating in fifa 20. As we can see from this box plot, at lower ratings, the range of the player wages are very low and as the rating creeps up, both the player wages go up significantly and there is a much larger range for players wages.
+As we can see from this histogram, the mode of the overall rating of a player in FIFA 20 is around 65
+points. The histogram also looks like it is normally distributed. 
 
-```{r}
-ggplot(data = data, aes(x = as.factor(potential), y = wage_eur))+ geom_boxplot()  +  
-  ggtitle('Box Plot of Potential Rating vs Wage') + 
-  labs(x = 'Potential Rating', y = "Wage (Euros)")
+\newpage
+
+```{r potential hist}
+ggplot(data = fifa_data, aes(x = potential)) + 
+  geom_histogram(binwidth = 2, color = 'black', fill = 'gray') + 
+  ggtitle('Histogram of Players Potential Ratings') + 
+  labs(x = 'Potential Rating', y = "Count")
 ```
 
 
-From this box plot, I learned that potential rating is not the best representation for wages because
-there is an outlier at the 95 rating. Also for some reason the highest potential rated players in the
-game strangely has a lower rating than the 91's and 92's. 
+Simliarly to the Overall Rating Histogram, the potential ratings of players are also normally
+distributed. However, the average potential rating of FIFA players increased to around 70 points
+instead of 65. 
 
-```{r}
-ggplot(data = data, aes(x = as.factor(international_reputation), y = wage_eur))+ 
-  geom_boxplot() + ggtitle('Box Plot of International Repuation vs Wage') +
-  labs(x = 'International Repuation', y = "Wage (Euros)")
+\newpage
+
+```{r int rep hist}
+ggplot(data = fifa_data, aes(x = international_reputation)) + 
+  geom_histogram(binwidth = 1, color = 'black', fill = 'gray') + 
+  ggtitle('Histogram of Players International Reputation') +
+  labs(x = 'International Reputation', y = "Count")
 ```
 
-This box plot shows that there are many players with an international reputation of 3 or less but
-they do not make that much money. Compared to the players with 4 or above, the wages are much higher
-with larger ranges. I think this is because in Fifa, overall rating is sometimes based on
-international reputation which makes sense looking at this data. 
+This histogram shows that there are many players with an international reputation of 1 with less than 
+2000 players with a rating above. I think this is the case becuase international repuation is based off
+of how well the player plays for their national team. Since there are only so many spots on a national
+team it makes sense that the vast majority of players have an international reputation of 1. 
 
 
-```{r}
-ggplot(data = data, aes(x = as.factor(shooting), y = wage_eur))+ geom_boxplot() + 
-  ggtitle('Box Plot of Shooting Rating vs Wage') + 
-  labs(x = 'Shooting Rating', y = "Wage (Euros)")
+\newpage
+
+```{r shooting hist, warning = FALSE}
+ggplot(data = fifa_data, aes(x = shooting)) + 
+  geom_histogram(binwidth = 4, color = 'black', fill = 'gray') + 
+  ggtitle('Histogram of Players Shooting Rating') + 
+  labs(x = 'Shooting Rating', y = "Count")
 ```
 
-As we see from this box plot, we can see that shooting rating is not that great of indicator of
-wages. I think that this is the case because there are really high paid players that are defenders.
-For example, Matthijs de Ligt is the highest paid defender in the game with only a 58 shooting
-rating. 
+As we can see from this histogram of players' shooting rating, the shooting ratings look negatively skewed as it appears there are more players with higher shooting rating than not. The mode of the histogram is around 60-65 shooting rating.
 
-
-
-```{r}
-ggplot(data = data, aes(x = as.factor(age), y = wage_eur))+ geom_boxplot() + 
-  ggtitle('Box Plot of Age vs Wage') + 
-  labs(x = 'Age', y = "Wage (Euros)")
-```
-
-As we can see from this box plot, as long as you are not very young or very old, you will generally
-get paid around an equal wage. I learned from this box plot that the players that get paid the most
-are around 28-32. I think this is because that is when their physical peak is. 
+\newpage
 
 
 ## Plots of X's vs Y's
 
 
-
-```{r}
-plot(x = data$overall, y = data$wage_eur, ylab = "Wage (Euros)", 
-     xlab = "Overall Rating", main = 'Wage vs Overall Rating', col = 'blue')
+```{r wage v overall}
+plot(x = fifa_data$overall, 
+     y = fifa_data$wage_eur, 
+     ylab = "Wage (Euros)", 
+     xlab = "Overall Rating", 
+     main = 'Wage vs Overall Rating', 
+     col = 'blue')
 ```
 
 In this plot, you can see that overall rating has a clear correlation with wage. As overall rating
-goes up, wage also goes up. This plot also looks like an exponential function
+goes up, wage also goes up. This plot also looks like an exponential function.
 
-```{r}
-plot(x = data$potential, y = data$wage_eur, ylab = "Wage (Euros)", 
-     xlab = "Potential Rating", main = 'Wage vs Potential Rating', col = 'navy')
+\newpage
+
+```{r wage v potential }
+plot(x = fifa_data$potential, 
+     y = fifa_data$wage_eur, 
+     ylab = "Wage (Euros)", 
+     xlab = "Potential Rating", 
+     main = 'Wage vs Potential Rating', 
+     col = 'navy')
 ```
 
 In this plot, you can also see that it is very similar to the results of the overall rating. This is
 because I think that overall rating is almost the same as potential rating on the players with the
 highest wages. 
 
+\newpage
 
-```{r}
-plot(x = data$international_reputation, y = data$wage_eur,ylab = "Wage (Euros)", 
-     xlab = "International Reputation", main = 'Wage vs International Reputation' , 
+```{r wage v int rep}
+plot(x = fifa_data$international_reputation, 
+     y = fifa_data$wage_eur,ylab = "Wage (Euros)", 
+     xlab = "International Reputation", 
+     main = 'Wage vs International Reputation', 
      col = 'blue')
 ```
 
@@ -126,10 +204,12 @@ Again, this box plot shows that there are many players with an international rep
 but, they do not make that much money. Most of the players with an international repuation of 4 or
 higher earn a much larger salary than those with a rating of 3 or less.
 
+ \newpage
+
  
- 
-```{r}
-plot(x = data$shooting, y = data$wage_eur, ylab = "Wage (Euros)", 
+```{r wage v shooting}
+plot(x = fifa_data$shooting, y = fifa_data$wage_eur,
+     ylab = "Wage (Euros)", 
      xlab = "Shooting Rating", 
      main = 'Wage vs Shooting Rating')
 ```
@@ -140,14 +220,391 @@ shooting stat is very high compared to other players. As we can see, the players
 above has high salaries compared to 85 and below. I think this is because attackers in soccer are
 paid more than defenders. 
 
-```{r}
-plot(x = data$age, y = data$wage_eur, ylab = "Wage (Euros)", xlab = "Age", main = 'Wage vs Age')
+\newpage
+
+```{r wage v age}
+plot(x = fifa_data$age, 
+     y = fifa_data$wage_eur, 
+     ylab = "Wage (Euros)",
+     xlab = "Age", 
+     main = 'Wage vs Age')
 ```
 
-As we can see from this plot, most of the fifa players are between 23 and 33 years old. This is also
-where the players get paid the most because of their combination of physical form and experience.
-These are peak years for athletes and they have the wages to back that up. 
+As we can see from this plot, most of the fifa players are between 23 and 33 years old. 
+This is also where the players get paid the most because of their combination of physical 
+form and experience.These are peak years for athletes and they have the wages to back that
+up. 
+
+\newpage
 
 
+# Report 2
+
+## Finding the Best Regression
+
+### Fixing Release Clause Data
+
+Since there are some release clauses that are NA, I set them to 0 to make sure that the dimensions of my regressions and residuals are the same.
+
+### Regression for different X's on wage
+
+Model #1 
+```{r lm release, message = FALSE}
+fit_release = lm(data = fifa_data, wage_eur ~ release_clause_eur)
+summary(fit_release)$adj.r.squared
+```
+The variable I chose were players' release clause in Euros. This variable would make sense because the
+release clause should be in a similar range to wages.
+
+Model #2
+```{r lm value, message = FALSE}
+fit_value = lm(data = fifa_data, wage_eur ~ value_eur)
+summary(fit_value)$adj.r.squared
+```
+The variable I chose were players' value in Euros. This variable would make sense because player value
+should be in a similar range to wages.
+
+Model #3
+```{r lm passing,message = FALSE}
+fit_pass = lm(data = fifa_data, wage_eur ~ passing)
+summary(fit_pass)$adj.r.squared
+```
+The variable I chose were the players' passing rating. This variable would make sense because as a player gets better at passing the more a player should get paid.
+
+Model #4
+```{r lm dribbling,message = FALSE}
+fit_drib = lm(data = fifa_data, wage_eur ~ dribbling)
+summary(fit_drib)$adj.r.squared
+```
+The variable I chose were the players' dribbling rating. This variable would make sense because as a player gets better at dribbling the more a player should get paid.
+
+Model #5
+```{r lm overall, message = FALSE}
+fit_overall = lm(data = fifa_data, wage_eur ~ overall)
+summary(fit_overall)$adj.r.squared
+```
+The variable I chose were the players' overall rating. This relationahip would make sense because as a
+player gets better as a player the more they should get paid.
+
+Model #6
+```{r lm 6, message = FALSE}
+fit_potential = lm(data = fifa_data, wage_eur ~ potential)
+summary(fit_potential)$adj.r.squared
+```
+
+The variable I chose was the potential rating of the players. The relationship between wage and potential rating makes sense because soccer clubs pay for player's potential. 
+
+Model #7
+```{r lm best, message = FALSE}
+fit_best = lm(wage_eur ~ release_clause_eur +
+                value_eur + overall +
+                potential, data = fifa_data)
+summary(fit_best)$adj.r.squared
+
+```
+
+The variables for this regression were release clause in euros, value in euros, overall 
+rating, and potential rating. The relationship between these variables make sense because all these
+variables should affect the wage of a player.
+
+
+\newpage
+
+### Finding the best fit
+
+```{r, message = FALSE}
+summary(fit_best)
+```
+
+
+From my testing, I believe that fit_best is the best regression. The regression includes the X
+variables release clause (euros), value (euros), overall rating, and potential rating. The Adjusted 
+R-Squared value is 0.7391 which is relatively high. In statistics, the Adjusted R-Squared value 
+explains the percentage of the variation around the mean. In other words, the regression can explain 
+73.91 % of the variation around the mean. The p-value for all the X variables are significant. This 
+means that the variable's p-value is less than .05. As we can see from the summary, the p-values of the
+variables are far less than .05 resulting in significant variables.
+
+
+The mean response for release clause was 5.542e-04, mean response for value was 2.216e-03, the mean response for 
+overall rating was 2.518e+02, and the mean response for potential rating was -2.520e+02. This means that holding all 
+other variables constant, an increase of one Euro in release cause will cause wage to increase by .0005542 Euros. An 
+increase of the value of a player by one Euro will cause wage to increase by .002216 Euros. An increase in overall 
+rating will cause an increase in wage by 251.8 Euros. However, an increase in Potential Rating causes the weekly wage to decrease 252 Euros. This makes sense as the better the player, the better the wages. The same thing goes with release clause and value of a player. The more valuable the player, the more the player will get paid. The one weird thing I did notice in the regression was the mean response for potential rating because it was negative. One would think that an increase in potential rating would increase wages but that is simply not the case. One explanation could be that since overall rating and potential rating are very simliar they would cancel each other out in our regression line. 
+
+Our F statistic is 1.063e+04 on 4 and 15072 Degrees of Freedom with a p-value of 2.2e-16. This means that our 
+statistics are significant and that our Adjusted R-Squared value is also significant. 
+
+
+
+\newpage
+
+## Y vs Yhat
+
+```{r y vs yhat, warning = FALSE, error = FALSE}
+pred = fit_best$fitted.values
+ggplot() + geom_point(aes(x = pred, y = fifa_data$wage_eur)) + geom_abline() + ggtitle('Y vs Y-Hat') + 
+  labs(x = 'Y-Hat', y = 'Wage (Euros)')
+```
+
+When plotting Y-hat onto Y, the desired result is a one-to-one relationship. As we can see from the
+plot, Y is almost a one to one function of the prediction but, the variance of the residuals increases
+for high values. So we have heteroscedasticity in the wage dimnesion. 
+
+\newpage
+
+## Estimated Coefficients and Standard Error
+```{r, messages = FALSE}
+fitBest = summary(fit_best)
+coefs = as.data.frame(fitBest$coefficients[-1, 1:2])
+names(coefs)[2] = "se" 
+coefs$vars = rownames(coefs)
+ggplot(coefs, aes(vars, Estimate)) + 
+  geom_errorbar(aes(ymin=Estimate - 1.96*se, ymax=Estimate + 1.96*se), lwd=1, 
+                colour="red", width=0) +
+  geom_errorbar(aes(ymin=Estimate - se, ymax=Estimate + se),
+                lwd=1.5, colour="blue", width=0) +
+  geom_point(size=2, pch=21, fill="yellow")
+```
+From the standard error plot, we can see the 95% confidence interval of the 4 different X variables in 
+the FIFA 20 dataset. Clearly, overall and potential rating's confidence interval do not include 0. This
+results in those variables being significant. On the other hand, release clause and value include 0 in 
+their confidence interval, resulting in those variables being insignificant. This is different than 
+fit_best in which I found that all 4 X variables are significant. 
+
+
+\newpage
+
+
+## Histograms of the Residuals 
+```{r best fit hist, error = FALSE, message=FALSE, warning=FALSE}
+ggplot(data = fifa_data, aes(x = residuals(fit_best))) +
+  geom_histogram(binwidth = 100) +
+  xlim(-12000,12000) +
+  ggtitle('Histogram of Residuals of Best Regression') +
+  labs(x = 'Residuals', y = 'Count')
+ggplot() + geom_point(aes(y = fifa_data$wage_eur, x = residuals(fit_best))) + 
+  ggtitle('Wage vs Residuals of Best Fit') + 
+  labs(x = 'Wage (Euros)', y = 'Residuals')
+```
+The histogram of the residuals are normally distributed which is the desired result. For the plot of
+Wage vs Residuals, the desired results are a homosketastic plot and to see if the residuals are
+dependent on wage. As we can see from the plot, the plot is not homosketastic but not super heterosketastic either. 
+However, since the plot is heterosketastic, the regression is not a very good indicator of wage. 
+
+
+\newpage
+
+# Report 3
+
+## Question 1: Creating a train and test subset
+
+```{r train/test}
+set.seed(3)
+train = fifa_data %>% sample_frac(.5)
+test = fifa_data %>% setdiff(train)
+x_train = model.matrix(wage_eur~., train)[,-1]
+x_test = model.matrix(wage_eur~., test)[,-1]
+y_train = train$wage_eur
+y_test = test$wage_eur
+```
+
+
+## Question 2: Creating a Ridge and Lasso Regression
+### a. Tune the model and find the best model
+```{r 2 models}
+x = model.matrix(wage_eur~., dataOmit)[,-1] # Predictors
+y = dataOmit$wage_eur # Y-value 
+grid = 10^seq(10,-2,length = 100)
+ridgeMod = glmnet(x, y, alpha = 0, lambda = grid)
+cv.out = cv.glmnet(x_train, y_train, alpha = 0)
+bestlam = cv.out$lambda.min
+bestlam
+```
+The flexibly (lambda) of the ridge model is 1906.656. 
+
+```{r}
+lassoMod = glmnet(x,y,alpha = 1, lambda = grid)
+cv.outL = cv.glmnet(x_train, y_train, alpha = 1)
+bestlamL = cv.outL$lambda.min
+bestlamL
+```
+The flexibly (lambda) of the lasso model is 19.51522
+\newpage
+
+### b. Choose the Lambda within 1 SE of the minimum Lambda  
+```{r}
+cv.out$lambda.1se
+```
+The range for 1 standard error for the ridge model is 1906.656 - 8447. The lambda I have chosen is 2980 because it 
+is within 1SE of the minimum lambda
+
+```{r}
+cv.outL$lambda.1se
+```
+The range for 1 standard error for the lasso model is 19.51522 - 2702. The lambda I have chosen is 20 because it 
+is within 1SE of the minimum lambda
+
+\newpage
+
+### c. CV and chosen lambda in a graph 
+```{r}
+plot(cv.out)
+```
+
+As we can see from the graph of the cross-validation error, the chosen lambda is indeed within 1 standard error of 
+the minimum lambda. The value 2980 is where log(8) is. 
+
+\newpage 
+
+```{r}
+plot(cv.outL)
+```
+
+As we can see from the graph of the cross-validation error, the chosen lambda is indeed within 1 standard error of 
+the minimum lambda. The value 20 is where log(3) is. 
+
+\newpage
+
+### d. How coefficients change with lambda 
+
+```{r}
+out = glmnet(x, y, alpha = 0)
+plot(out, xvar = 'lambda')
+```
+
+
+This is graph shows us how as lambda changes, the coefficents also change. This shows the ridge regression shrinking all the coeffients towards zero.
+
+\newpage
+
+```{r}
+lasso_mod = glmnet(x_train, y_train, alpha = 1)
+plot(lasso_mod, xvar = 'lambda')
+```
+
+In the plot, some coefficients are exactly zero, this is what you want because lasso regressions do perform variable 
+selection. 
+
+\newpage
+
+### e. Chosen coefficents correspond with lambda 
+```{r}
+ridge_coef = predict(ridgeMod, type = 'coefficients', s = bestlam)[1:17,]
+ridge_coef
+```
+
+
+Since the ridge regression does not perform variable selection, all the variables are still in the model. This means that the original 17 predictors are still our main predictors in our model. 
+```{r}
+lasso_coef = predict(lassoMod, type = 'coefficients', s = bestlamL)[1:17,]
+lasso_coef[lasso_coef != 0] 
+```
+On the other hand, lasso regression does perform variable selection however, in this case, ridge regression only removed one variable. That variable was passing, leaving the rest of the variables as the main predictors of our model. 
+
+### f. MSE of both models
+```{r}
+ridgePred = predict(ridgeMod, s = 2980, newx = x_test)
+mean((ridgePred - y_test)^2)
+```
+```{r}
+lassoPred = predict(lassoMod, s = 20, newx = x_test)
+mean((lassoPred - y_test)^2)
+```
+The MSE for the ridge model is 119838952 and the MSE for the lasso model is 119522844. We can see that the lasso model is a better fit for our data set because of the lower MSE.
+
+### g. Comparing with OLS
+```{r}
+library(dvmisc)
+get_mse(fit_best)
+```
+
+The MSE of the OLS model is 131028294, which is higher than both the ridge and lasso models. This means that the ridge and lasso models are better indicators for estimating wage of professional soccer players.
+
+\newpage
+
+## Question 3: Regression Tree
+
+### a. Fit and plot a big tree
+
+```{r}
+set.seed(1)
+fifa_train = fifa_data %>% sample_frac(.7)
+fifa_test = fifa_data %>% setdiff(fifa_train)
+tree_fifa = tree(wage_eur~., fifa_train)
+summary(tree_fifa)
+plot(tree_fifa) # The tree
+text(tree_fifa, pretty = 2) # The tree
+```
+\newpage
+
+### b. Check the Error rate or MSE on the test subset
+```{r}
+single_tree_estimate_tree = predict(tree_fifa, newdata = fifa_test)
+mean((single_tree_estimate_tree - fifa_test$wage_eur)^2)
+```
+The MSE of the tree above is 142,610,192. This may seem like a huge number but it is reasonable considering that the wage of a player can range from 0 - around 500,000. 
+
+
+### c. Use cross validation to prune tree
+```{r}
+cv.fifa = cv.tree(tree_fifa)
+plot(cv.fifa$size, cv.fifa$dev, type = 'b')
+```
+
+
+As you can see from the plot above, the 8 node tree is selected by cross-validation. This is the same as the unpruned tree. In this case, the tree above is already the best tree possible. 
+
+\newpage
+
+### d. Plot the pruned tree 
+
+```{r}
+prune_fifa = prune.tree(tree_fifa, best = 8)
+plot(prune_fifa)
+text(prune_fifa, pretty = 0)
+title('Wage (Euro) of Fifa Players Regression Tree')
+```
+
+
+
+### e. Interpretion of Tree
+
+As we can see from the tree summary, the variables that affect the tree are value (Euros), overall rating, and 
+international reputation. The variable value_eur is the measure of the value of the rating by the team. Overall 
+rating is the overall attribute of the player, based on all of the player stats. International reputation is an 
+attribute that is based off international competition performance and is rated from 1-5. The benefit of this tree is 
+that it is very simple and easy to follow. For example, I will estimate David Silva's wage from his given 
+information. His overall rating is 88, his value in euros is 36000000, and his international reputation is 4. Since his value is above 1.625e+07, we traverse to the right side. Silva's overall rating is above 86.5 as well so we would again traverse to the right side of that node. Silva's international rating is 4 which means we traverse to the right of the international rating node, resulting in 297500 for his wage estimation. Silva's actual wage is 265,000 Euros. So, from this tree, it is fairly accurate. 
+
+### f. Comparing to OLS, lasso, and ridge models 
+```{r, message = FALSE}
+single_tree_estimate_prune = predict(prune_fifa, newdata = fifa_test)
+ggplot() +
+  geom_point(aes(x = fifa_test$wage_eur, y = single_tree_estimate_prune), color = 'blue') +
+  geom_abline(color = 'red') +
+  labs(x = 'test subset wage', y = 'predicted wage')
+mean((single_tree_estimate_prune - fifa_test$wage_eur)^2)
+library(dvmisc)
+get_mse(fit_best)
+```
+The MSE for the best linear model I have chose was 131,028,294 which is less than the regression tree. This means that the wages from the data set follow a more linear model rather than a regression tree. 
+
+\newpage
+
+# Conclusion
+
+From the Histograms and Plots of wage against the different X variables I have chosen, we can see that there is
+definitely a correlation between wage and the X's I have chosen. For example in Wage vs Overall, Shooting, and
+Potential Rating, there is an exponential correlation between the X's and wage. From the regression analysis, I found
+that the best regression for finding wage included release clause, value, overall rating, and potential rating. From
+this regression I found that all those variables were significant resulting in a good model. However, the OLS model 
+had flaws. The biggest flaw was the fact that there was heterosketaticity. Heterosketaticity is not acceptable for a 
+linear model because that means that there is no constant variance and one of the assumptions for OLS is that there 
+is constant variance. The regression tree model was not great either because of the MSE of the model. The MSE of the 
+regression tree model was higher than both the OLS and ridge/lasso models. The best model I found for estimating 
+wages of professional soccer players was the Lasso model. While both the ridge and lasso models had very similar 
+MSE's, the lasso model had the lowest of them all. The lower the MSE, the lower the error which means that the Lasso 
+model is the best model I have tested so far.
 
 
