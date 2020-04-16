@@ -1,7 +1,7 @@
 ---
 title: "Effect of Fifa Player Ratings on Real Life Wages"
 author: "Alan Qin"
-date: "04/01/2020"
+date: "04/15/2020"
 output:
   pdf_document:
     toc: yes
@@ -24,6 +24,10 @@ library("ggplot2")
 library('dplyr')
 library('ISLR')
 library(MASS)
+library('randomForest')
+library(gbm)
+library('vip')
+library(xgboost)
 data = read.csv("/Users/alanqin/Downloads/fifa-20-complete-player-dataset/players_20.csv")
 ```
 \newpage
@@ -47,7 +51,8 @@ These variables are
 * **potential**: potential attribute of the player, based on age and other factors
 * **age**: age of the player
 * **pace**: player pace rating, based on sprint speed and acceleration
-* **shooting**: player shooting rating, based on finishing, positioning, shot power, long shots, volley, and penalties
+* **shooting**: player shooting rating, based on finishing, positioning, shot power, long shots, volley, and 
+penalties
 * **passing**: player passing rating, based on vision, crossing, fk. accuracy, short and long passing, and curve
 * **dribbling**: player dribbling rating, based on agility, balance, reactions, ball control, dribbling, composure
 * **defending**: player defending rating, based on interceptions, heading accuracy, def. awareness, tackling
@@ -68,7 +73,6 @@ data1 = newData %>%
          potential, value_eur, international_reputation,
          weak_foot, skill_moves, release_clause_eur, pace,
          shooting, passing, dribbling, defending, physic)
-#data1[1] = log(data1[1])
 dataOmit = na.omit(data1)
 fifa_data = dataOmit
 ```
@@ -343,7 +347,8 @@ statistics are significant and that our Adjusted R-Squared value is also signifi
 
 ```{r y vs yhat, warning = FALSE, error = FALSE}
 pred = fit_best$fitted.values
-ggplot() + geom_point(aes(x = pred, y = fifa_data$wage_eur)) + geom_abline() + ggtitle('Y vs Y-Hat') + 
+ggplot() + geom_point(aes(x = pred, y = fifa_data$wage_eur)) + 
+  geom_abline() + ggtitle('Y vs Y-Hat') + 
   labs(x = 'Y-Hat', y = 'Wage (Euros)')
 ```
 
@@ -385,7 +390,7 @@ ggplot(data = fifa_data, aes(x = residuals(fit_best))) +
   labs(x = 'Residuals', y = 'Count')
 ggplot() + geom_point(aes(y = fifa_data$wage_eur, x = residuals(fit_best))) + 
   ggtitle('Wage vs Residuals of Best Fit') + 
-  labs(x = 'Wage (Euros)', y = 'Residuals')
+  labs(x = 'Wage (Euros)', y = 'Residuals') + geom_abline()
 ```
 The histogram of the residuals are normally distributed which is the desired result. For the plot of
 Wage vs Residuals, the desired results are a homosketastic plot and to see if the residuals are
@@ -400,7 +405,7 @@ However, since the plot is heterosketastic, the regression is not a very good in
 ## Question 1: Creating a train and test subset
 
 ```{r train/test}
-set.seed(3)
+set.seed(1)
 train = fifa_data %>% sample_frac(.5)
 test = fifa_data %>% setdiff(train)
 x_train = model.matrix(wage_eur~., train)[,-1]
@@ -411,8 +416,12 @@ y_test = test$wage_eur
 
 
 ## Question 2: Creating a Ridge and Lasso Regression
+
 ### a. Tune the model and find the best model
+
+####Ridge Regression 
 ```{r 2 models}
+set.seed(1)
 x = model.matrix(wage_eur~., dataOmit)[,-1] # Predictors
 y = dataOmit$wage_eur # Y-value 
 grid = 10^seq(10,-2,length = 100)
@@ -422,34 +431,44 @@ bestlam = cv.out$lambda.min
 bestlam
 ```
 The flexibly (lambda) of the ridge model is 1906.656. 
-
+#### Lasso Regression
 ```{r}
+set.seed(1)
 lassoMod = glmnet(x,y,alpha = 1, lambda = grid)
 cv.outL = cv.glmnet(x_train, y_train, alpha = 1)
 bestlamL = cv.outL$lambda.min
 bestlamL
 ```
-The flexibly (lambda) of the lasso model is 19.51522
+The flexibly (lambda) of the lasso model is 57.46901
 \newpage
 
 ### b. Choose the Lambda within 1 SE of the minimum Lambda  
-```{r}
-cv.out$lambda.1se
-```
-The range for 1 standard error for the ridge model is 1906.656 - 8447. The lambda I have chosen is 2980 because it 
-is within 1SE of the minimum lambda
 
+####Ridge Regression
 ```{r}
+set.seed(1)
+cv.out$lambda.1se
+cv.out
+```
+The range for 1 standard error for the ridge model is 1906.656 - 8146. The lambda I have chosen is 2980 because 
+it is within 1SE of the minimum lambda
+
+#### Lasso Regression
+```{r}
+set.seed(1)
 cv.outL$lambda.1se
 ```
-The range for 1 standard error for the lasso model is 19.51522 - 2702. The lambda I have chosen is 20 because it 
+The range for 1 standard error for the lasso model is 19.51522 - 2243. The lambda I have chosen is 20 because it 
 is within 1SE of the minimum lambda
 
 \newpage
 
 ### c. CV and chosen lambda in a graph 
+
+#### Ridge Regression
 ```{r}
 plot(cv.out)
+title('Ridge Regression')
 ```
 
 As we can see from the graph of the cross-validation error, the chosen lambda is indeed within 1 standard error of 
@@ -457,8 +476,10 @@ the minimum lambda. The value 2980 is where log(8) is.
 
 \newpage 
 
+#### Lasso Regression
 ```{r}
-plot(cv.outL)
+plot(cv.outL, main = 'Lasso Regression')
+
 ```
 
 As we can see from the graph of the cross-validation error, the chosen lambda is indeed within 1 standard error of 
@@ -468,23 +489,29 @@ the minimum lambda. The value 20 is where log(3) is.
 
 ### d. How coefficients change with lambda 
 
+####Ridge Regression
+
 ```{r}
 out = glmnet(x, y, alpha = 0)
-plot(out, xvar = 'lambda')
+plot(out, xvar = 'lambda', main = 'Ridge Regression')
 ```
 
 
-This is graph shows us how as lambda changes, the coefficents also change. This shows the ridge regression shrinking all the coeffients towards zero.
+This is graph shows us how as lambda changes, the coefficents also change. This shows the ridge regression shrinking 
+all the coeffients towards zero. This graph shows that after around log(14) lags that all coefficients reach zero. 
 
 \newpage
 
+#### Lasso Regression
 ```{r}
 lasso_mod = glmnet(x_train, y_train, alpha = 1)
-plot(lasso_mod, xvar = 'lambda')
+plot(lasso_mod, xvar = 'lambda', main = 'Lasso Regression')
 ```
 
-In the plot, some coefficients are exactly zero, this is what you want because lasso regressions do perform variable 
-selection. 
+Lasso regressions perform variable selection. What this means is that there will be coefficients that will be exactly
+zero from the start instead of shrinking the varibles like the Ridge regression. As we can see from the graph, we can
+see that there are coefficients that start from zero, just like it is supposed to.
+
 
 \newpage
 
@@ -504,22 +531,24 @@ On the other hand, lasso regression does perform variable selection however, in 
 
 ### f. MSE of both models
 ```{r}
+set.seed(1)
 ridgePred = predict(ridgeMod, s = 2980, newx = x_test)
 mean((ridgePred - y_test)^2)
 ```
 ```{r}
+set.seed(1)
 lassoPred = predict(lassoMod, s = 20, newx = x_test)
 mean((lassoPred - y_test)^2)
 ```
-The MSE for the ridge model is 119838952 and the MSE for the lasso model is 119522844. We can see that the lasso model is a better fit for our data set because of the lower MSE.
+The MSE for the ridge model is 119,926,096 and the MSE for the lasso model is 116,569,880. We can see that the lasso model is a better fit for our data set because of the lower MSE.
 
 ### g. Comparing with OLS
-```{r}
+```{r compare with OLS, message = FALSE}
 library(dvmisc)
 get_mse(fit_best)
 ```
 
-The MSE of the OLS model is 131028294, which is higher than both the ridge and lasso models. This means that the ridge and lasso models are better indicators for estimating wage of professional soccer players.
+The MSE of the OLS model is 131,028,294, which is higher than both the ridge and lasso models. This means that the ridge and lasso models are better indicators for estimating wage of professional soccer players.
 
 \newpage
 
@@ -529,12 +558,13 @@ The MSE of the OLS model is 131028294, which is higher than both the ridge and l
 
 ```{r}
 set.seed(1)
-fifa_train = fifa_data %>% sample_frac(.7)
-fifa_test = fifa_data %>% setdiff(fifa_train)
+fifa_train = fifa_data %>% sample_frac(.7) 
+fifa_test = fifa_data %>% setdiff(fifa_train) 
 tree_fifa = tree(wage_eur~., fifa_train)
 summary(tree_fifa)
 plot(tree_fifa) # The tree
 text(tree_fifa, pretty = 2) # The tree
+title('Decision Tree of Wage in FIFA')
 ```
 \newpage
 
@@ -549,7 +579,7 @@ The MSE of the tree above is 142,610,192. This may seem like a huge number but i
 ### c. Use cross validation to prune tree
 ```{r}
 cv.fifa = cv.tree(tree_fifa)
-plot(cv.fifa$size, cv.fifa$dev, type = 'b')
+plot(cv.fifa$size, cv.fifa$dev, type = 'b', main = 'Cross Validation Plot')
 ```
 
 
@@ -563,7 +593,7 @@ As you can see from the plot above, the 8 node tree is selected by cross-validat
 prune_fifa = prune.tree(tree_fifa, best = 8)
 plot(prune_fifa)
 text(prune_fifa, pretty = 0)
-title('Wage (Euro) of Fifa Players Regression Tree')
+title('Pruned Wage (Euro) of Fifa Players Regression Tree')
 ```
 
 
@@ -583,7 +613,8 @@ single_tree_estimate_prune = predict(prune_fifa, newdata = fifa_test)
 ggplot() +
   geom_point(aes(x = fifa_test$wage_eur, y = single_tree_estimate_prune), color = 'blue') +
   geom_abline(color = 'red') +
-  labs(x = 'test subset wage', y = 'predicted wage')
+  labs(x = 'test subset wage', y = 'predicted wage') + 
+  ggtitle('Predicted vs Test Subset Wage')
 mean((single_tree_estimate_prune - fifa_test$wage_eur)^2)
 library(dvmisc)
 get_mse(fit_best)
@@ -591,6 +622,291 @@ get_mse(fit_best)
 The MSE for the best linear model I have chose was 131,028,294 which is less than the regression tree. This means that the wages from the data set follow a more linear model rather than a regression tree. 
 
 \newpage
+
+
+
+# Report 4 
+
+
+## Question 1: Creating a Train and Test Subset
+
+```{r bag}
+set.seed(1)
+bag_train = fifa_data %>% sample_frac(.5)
+bag_test = fifa_data %>% setdiff(train)
+```
+
+I chose a training and test set from the fifa dataset. I will use the same training and test data with bagging and 
+boosting to make sure comparing the models will be as fair as possible.
+
+\newpage
+
+
+## Question 2: Fit a Bagging Regression
+
+### a. Out-of-Bag Error Rate Plot 
+
+```{r , cache = TRUE, message = FALSE}
+set.seed(1)
+bag.fifa = randomForest(wage_eur ~., data = bag_train, 
+                        mtry = ncol(bag_train) - 1,
+                        importance = TRUE)
+bag.fifa
+plot(bag.fifa, main = 'Out-of-Bag Error Rate')
+```
+Since Bagging is simply just Random Forest with m equalling the number of parameters, we can just use the 
+randomForest() function. From the plot, as the number of trees increases, the error of the model decreases until a 
+certain asymptote. This asymptote is around 1.1e+08.
+
+\newpage
+
+### b. Predicted Y vs Actual Y Plot 
+
+```{r}
+
+yhat.bag = predict(bag.fifa, newdata = bag_test)
+ggplot() + geom_point(aes(x = bag_test$wage_eur, y = yhat.bag))+
+  geom_abline() + 
+  labs(x = "Median Value", y = "Estimation of Median Value") + 
+  ggtitle('Bagging Predicted Y vs Actual Y')
+```
+
+As we can see from the results of our prediction vs actual value plot, the plot follows a general slope of 1. This is
+good because we want our predicted and test results to have a one-to-one relationship. This plot shows only a few 
+outliers in our predictions and is generally a good model for most of the values.
+
+
+\newpage
+
+### c. MSE of Bagging
+```{r}
+set.seed(1)
+bag_mse = mean((yhat.bag - bag_test$wage_eur)^2)
+bag_mse
+```
+
+The MSE from the test set associated with the bagged regression tree is 107,274,225. This MSE is much about 
+20,000,000 smaller than our result in the ridge and lasso regression model. Comparing to the OLS and regression tree 
+model, the MSE of bagging, the difference is even more substanial. From these results, we can conclude that the bagging regression model is significantly better than all models covered before. 
+
+### d. Importance Matrix 
+
+```{r}
+importance = importance(bag.fifa)
+importance
+```
+
+This importance matrix is based off of two measures. The first is %IncMSE which is based on the **mean decrease of 
+accuracy in predictions** on the out-of-bag samples when a given variable is excluded from the model. As we can see 
+inour importance matrix, overall rating, release clause, and value are the tree most important variables in model. 
+The second is a measure of the **total increase in node impurity** that results from splits over that variable. Thus, a higher IncNodePurity is more important. As you can see, the importance of the variables are generally the same with
+the most important variables being overall rating, value, and release clause. 
+
+\newpage
+
+
+## Question 3: Random Forest
+```{r, cache = TRUE}
+set.seed(1)
+rf.fifa = randomForest(wage_eur ~., data = bag_train,
+                       mtry = 6,
+                       importance = TRUE,
+                       do.trace = 100)
+yhat.rf = predict(rf.fifa, newdata = bag_test)
+```
+\newpage
+### a, b. Out of Bag Error
+
+```{r, cache = TRUE}
+oob.err = double(16)
+test.err = double(16)
+for(mtry in 1:16) {
+  rf = randomForest(wage_eur ~., data = bag_train, mtry = mtry, ntree = 400)
+  oob.err[mtry] = rf$mse[400]
+  
+  pred = predict(rf, bag_test)
+  test.err[mtry] = with(bag_test, mean((wage_eur - pred)^2))
+}
+matplot(1:mtry , 
+        cbind(oob.err), 
+        pch=20 ,
+        col=c("red"),
+        type="b",
+        ylab="Mean Squared Error",
+        xlab="Number of Predictors Considered at Each Split")
+legend("topright",
+       legend=c("Out of Bag Error"),
+       pch=19, col=c("red"))
+```
+
+From the OOB error, we can see that the ideal number of parameters to use is 6. 
+
+\newpage
+
+### c. Plot Predicted Y vs Actual Y
+
+```{r}
+yhat.rf = predict(rf.fifa, newdata = bag_test)
+
+ggplot() + 
+  geom_point(aes(x = bag_test$wage_eur, y = yhat.rf)) + 
+  geom_abline() + 
+  labs(x = 'Median Value', y = 'Bagging Estimation of Median Value') + 
+  ggtitle('Random Forest Predicted Y vs Actual Y')
+```
+
+As we can see from the results of our prediction vs actual value plot, the plot follows a general slope of 1. You may
+notice that our plot is very similar to the bagging but, this is due to the fact that Random Forest is actually a 
+very similar process to Bagging, resulting in a similar prediction set. 
+
+\newpage
+
+### d. MSE 
+```{r}
+mse.rf = mean((yhat.rf - bag_test$wage_eur)^2)
+mse.rf
+```
+The MSE from the test set associated with the Random Forest regression tree is 103,884,216. Comparing this value to 
+the previous Bagging regression tree MSE (107,274,225), the MSE is even smaller than that which makes the Random 
+Forest regression tree the best model so far. 
+
+### e. Importance Matrix
+
+```{r}
+importance(rf.fifa)
+```
+
+From this importance matrix, we can see that the importance of overall rating, value, and release clause are even more important than before. This is because of the increase in %IncMSE as well as IncNodePurity. The higher the %IncMSE and IncNodePurity means the more important that variable is.
+
+\newpage 
+
+
+### f. Test and Out-of-Bag Error
+
+```{r, cache=TRUE}
+matplot(1:mtry , 
+        cbind(oob.err, test.err), 
+        pch=20 ,
+        col=c("red", "blue"),
+        type="b",
+        ylab="Mean Squared Error",
+        xlab="Number of Predictors Considered at Each Split")
+legend("topright",
+       legend=c("Out of Bag Error", "Test Error"),
+       pch=19, col=c("red", "Blue"))
+```
+
+From this plot, we can see that both the Out-of-Bag Error follows a similar patter to the test error which is what we
+want to see. 
+
+
+
+\newpage
+
+## Question 4: Fit a Boosting Regression
+
+### a. Plot Predicted Y vs Actual Y 
+```{r, messages = FALSE, cache=TRUE}
+set.seed(1)
+boost.fifa = gbm(wage_eur~.,
+                 data = bag_train,
+                 distribution = 'gaussian',
+                 n.trees = 5000,
+                 interaction.depth = 4)
+yhat.boost = predict(boost.fifa, bag_test, n.trees = 5000)
+ggplot() + 
+  geom_point(aes(x = bag_test$wage_eur, y = yhat.boost)) + 
+  geom_abline() + 
+  labs(x = "Median Value", y = "Estimation of Median Value") + 
+  ggtitle('Boosting Y vs Y-Hat')
+```
+
+Once again, the prediction of Y's vs Y-Hat's are very similar to previous prediction plots with similar outliers. 
+But, where the actual differences come are how accurate the vast majority of the points are with the Boosting model 
+not being as accurate as Bagging or Random Forest.
+
+\newpage
+
+### b. Compare test MSE to other models
+```{r}
+mse.boost = mean((yhat.boost-bag_test$wage_eur)^2)
+mse.boost
+```
+
+The MSE from the test set associated with the Random Forest regression tree is 127,282,596. Comparing this value to 
+the previous Random Forest regression tree MSE (103,884,216), the MSE is about 25% higher which places the accuracy of this model to around the same as the Ridge or Lasso model.
+
+
+### c. Boosting Importance Matrix 
+
+```{r boosting importance, message = FALSE}
+summary(boost.fifa)
+vip::vip(boost.fifa)
+```
+Compared to the previous Importance Matrix, there are no values along the variables but just relative importance. But
+similarly to the previous Importance Matrices, the top three variables are overall rating, release clause, and value.
+
+
+\newpage
+
+
+## Question 5: Fit a XGBoost Regression
+
+### a. Plot Predicted Y vs Actual Y
+
+```{r, message = FALSE, eval= FALSE, cache=TRUE}
+
+# Putting data in matrix form 
+
+
+```
+```{r}
+set.seed(1)
+fifa.y.train = as.matrix(bag_train[,'wage_eur'])
+fifa.x.train = as.matrix(bag_train[!names(bag_train) %in% c('wage_eur')])
+dtrain = xgb.DMatrix(data = fifa.x.train, label = fifa.y.train)
+fifa.x.test = as.matrix(bag_test[!names(bag_train) %in% c('wage_eur')])
+fifa.xgb = xgboost(data = dtrain, max_depth = 2, eta = .1, nrounds = 40,
+                   lambda = 0, 
+                   print_every_n = 10,
+                   objective = 'reg:linear')
+yhat.xgb = predict(fifa.xgb, fifa.x.test)
+ggplot() + 
+  geom_point(aes(x = bag_test$wage_eur, y = yhat.xgb)) + 
+  geom_abline()+
+  labs(x = 'Median Value', y = 'Xgboosting Estimation of Median Value') + 
+  ggtitle('Predicted Y vs Actual Y')
+```
+
+As you can see from this plot, the predictions are also generally very similar to the previous three. However we can see the differences by looking at the MSE's of the regression model.
+
+\newpage
+
+### b. XGboosting MSE 
+
+```{r}
+set.seed(1)
+xgb.mse = mean((yhat.xgb - bag_test$wage_eur)^2)
+xgb.mse
+```
+Looking at the MSE of the XGboosting model of 110,946,744, the MSE is lower than OLS and Ridge/Lasso but larger than 
+Bagging/Random Forest. The XGboosting model is also better than the regular boosting model. 
+
+
+### c. XGBoosting Importance Matrix
+
+```{r}
+importance_xgb = xgb.importance(colnames(fifa.x.train), model = fifa.xgb)
+importance_xgb
+xgb.plot.importance(importance_xgb, rel_to_first = TRUE, xlab = "Relative Importance")
+```
+
+Looking at this importance matrix, we can see that this is much different than the other models we have been using. 
+There are basically only four variables that are important, these being, overall rating, value, release clause, and 
+international reputation.
+
+\newpage
+
 
 # Conclusion
 
@@ -603,8 +919,11 @@ had flaws. The biggest flaw was the fact that there was heterosketaticity. Heter
 linear model because that means that there is no constant variance and one of the assumptions for OLS is that there 
 is constant variance. The regression tree model was not great either because of the MSE of the model. The MSE of the 
 regression tree model was higher than both the OLS and ridge/lasso models. The best model I found for estimating 
-wages of professional soccer players was the Lasso model. While both the ridge and lasso models had very similar 
-MSE's, the lasso model had the lowest of them all. The lower the MSE, the lower the error which means that the Lasso 
-model is the best model I have tested so far.
+wages of professional soccer players was the Random Forest Regression model. 
+
+The Random Forest Regression model is very similar to the Bagging model with a slight difference in the number of 
+parameters but the Random Forest has the lowest MSE of all the models I've tested. The lower the MSE, the lower the 
+error which means that the Random Forest Regression model is the best model I have tested so far. Bagging and the 
+XGboosting model came in a close second and third place. 
 
 
